@@ -406,7 +406,7 @@ namespace Dapper
         private static async Task<IEnumerable<T>> QueryAsync<T>(this IDbConnection cnn, Type effectiveType, CommandDefinition command)
         {
             object param = command.Parameters;
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, effectiveType, param?.GetType(), null);
+            var identity = new Identity(command.CommandText, command.CommandType, cnn, effectiveType, param?.GetType());
             var info = GetCacheInfo(identity, param, command.AddToCache);
             bool wasClosed = cnn.State == ConnectionState.Closed;
             var cancel = command.CancellationToken;
@@ -437,14 +437,7 @@ namespace Dapper
                         while (await reader.ReadAsync(cancel).ConfigureAwait(false))
                         {
                             object val = func(reader);
-                            if (val == null || val is T)
-                            {
-                                buffer.Add((T)val);
-                            }
-                            else
-                            {
-                                buffer.Add((T)Convert.ChangeType(val, convertToType, CultureInfo.InvariantCulture));
-                            }
+                            buffer.Add(GetValue<T>(reader, effectiveType, val));
                         }
                         while (await reader.NextResultAsync(cancel).ConfigureAwait(false)) { /* ignore subsequent result sets */ }
                         command.OnCompleted();
@@ -470,7 +463,7 @@ namespace Dapper
         private static async Task<T> QueryRowAsync<T>(this IDbConnection cnn, Row row, Type effectiveType, CommandDefinition command)
         {
             object param = command.Parameters;
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, effectiveType, param?.GetType(), null);
+            var identity = new Identity(command.CommandText, command.CommandType, cnn, effectiveType, param?.GetType());
             var info = GetCacheInfo(identity, param, command.AddToCache);
             bool wasClosed = cnn.State == ConnectionState.Closed;
             var cancel = command.CancellationToken;
@@ -484,29 +477,11 @@ namespace Dapper
                     ? CommandBehavior.SequentialAccess | CommandBehavior.SingleResult // need to allow multiple rows, to check fail condition
                     : CommandBehavior.SequentialAccess | CommandBehavior.SingleResult | CommandBehavior.SingleRow, cancel).ConfigureAwait(false);
 
-                    T result = default(T);
+                    T result = default;
                     if (await reader.ReadAsync(cancel).ConfigureAwait(false) && reader.FieldCount != 0)
                     {
-                        var tuple = info.Deserializer;
-                        int hash = GetColumnHash(reader);
-                        if (tuple.Func == null || tuple.Hash != hash)
-                        {
-                            tuple = info.Deserializer = new DeserializerState(hash, GetDeserializer(effectiveType, reader, 0, -1, false));
-                            if (command.AddToCache) SetQueryCache(identity, info);
-                        }
+                        result = ReadRow<T>(info, identity, ref command, effectiveType, reader);
 
-                        var func = tuple.Func;
-
-                        object val = func(reader);
-                        if (val == null || val is T)
-                        {
-                            result = (T)val;
-                        }
-                        else
-                        {
-                            var convertToType = Nullable.GetUnderlyingType(effectiveType) ?? effectiveType;
-                            result = (T)Convert.ChangeType(val, convertToType, CultureInfo.InvariantCulture);
-                        }
                         if ((row & Row.Single) != 0 && await reader.ReadAsync(cancel).ConfigureAwait(false)) ThrowMultipleRows(row);
                         while (await reader.ReadAsync(cancel).ConfigureAwait(false)) { /* ignore rows after the first */ }
                     }
@@ -594,7 +569,7 @@ namespace Dapper
                                 isFirst = false;
                                 cmd = command.TrySetupAsyncCommand(cnn, null);
                                 masterSql = cmd.CommandText;
-                                var identity = new Identity(command.CommandText, cmd.CommandType, cnn, null, obj.GetType(), null);
+                                var identity = new Identity(command.CommandText, cmd.CommandType, cnn, null, obj.GetType());
                                 info = GetCacheInfo(identity, obj, command.AddToCache);
                             }
                             else if (pending.Count >= MAX_PENDING)
@@ -642,7 +617,7 @@ namespace Dapper
                             {
                                 masterSql = cmd.CommandText;
                                 isFirst = false;
-                                var identity = new Identity(command.CommandText, cmd.CommandType, cnn, null, obj.GetType(), null);
+                                var identity = new Identity(command.CommandText, cmd.CommandType, cnn, null, obj.GetType());
                                 info = GetCacheInfo(identity, obj, command.AddToCache);
                             }
                             else
@@ -667,7 +642,7 @@ namespace Dapper
 
         private static async Task<int> ExecuteImplAsync(IDbConnection cnn, CommandDefinition command, object param)
         {
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, null, param?.GetType(), null);
+            var identity = new Identity(command.CommandText, command.CommandType, cnn, null, param?.GetType());
             var info = GetCacheInfo(identity, param, command.AddToCache);
             bool wasClosed = cnn.State == ConnectionState.Closed;
             using (var cmd = command.TrySetupAsyncCommand(cnn, info.ParamReader))
@@ -935,7 +910,7 @@ namespace Dapper
         private static async Task<IEnumerable<TReturn>> MultiMapAsync<TFirst, TSecond, TThird, TFourth, TFifth, TSixth, TSeventh, TReturn>(this IDbConnection cnn, CommandDefinition command, Delegate map, string splitOn)
         {
             object param = command.Parameters;
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, typeof(TFirst), param?.GetType(), new[] { typeof(TFirst), typeof(TSecond), typeof(TThird), typeof(TFourth), typeof(TFifth), typeof(TSixth), typeof(TSeventh) });
+            var identity = new Identity<TFirst, TSecond, TThird, TFourth, TFifth, TSixth, TSeventh>(command.CommandText, command.CommandType, cnn, typeof(TFirst), param?.GetType());
             var info = GetCacheInfo(identity, param, command.AddToCache);
             bool wasClosed = cnn.State == ConnectionState.Closed;
             try
@@ -985,7 +960,7 @@ namespace Dapper
             }
 
             object param = command.Parameters;
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, types[0], param?.GetType(), types);
+            var identity = new IdentityWithTypes(command.CommandText, command.CommandType, cnn, types[0], param?.GetType(), types);
             var info = GetCacheInfo(identity, param, command.AddToCache);
             bool wasClosed = cnn.State == ConnectionState.Closed;
             try
@@ -1037,7 +1012,7 @@ namespace Dapper
         public static async Task<GridReader> QueryMultipleAsync(this IDbConnection cnn, CommandDefinition command)
         {
             object param = command.Parameters;
-            var identity = new Identity(command.CommandText, command.CommandType, cnn, typeof(GridReader), param?.GetType(), null);
+            var identity = new Identity(command.CommandText, command.CommandType, cnn, typeof(GridReader), param?.GetType());
             CacheInfo info = GetCacheInfo(identity, param, command.AddToCache);
 
             DbCommand cmd = null;
@@ -1218,7 +1193,7 @@ namespace Dapper
             ExecuteScalarImplAsync<object>(cnn, command);
 
         /// <summary>
-        /// Execute parameterized SQL that selects a single value
+        /// Execute parameterized SQL that selects a single value.
         /// </summary>
         /// <typeparam name="T">The type to return.</typeparam>
         /// <param name="cnn">The connection to execute on.</param>
@@ -1233,7 +1208,7 @@ namespace Dapper
             object param = command.Parameters;
             if (param != null)
             {
-                var identity = new Identity(command.CommandText, command.CommandType, cnn, null, param.GetType(), null);
+                var identity = new Identity(command.CommandText, command.CommandType, cnn, null, param.GetType());
                 paramReader = GetCacheInfo(identity, command.Parameters, command.AddToCache).ParamReader;
             }
 

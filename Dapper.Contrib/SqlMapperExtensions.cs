@@ -6,14 +6,9 @@ using System.Reflection;
 using System.Text;
 using System.Collections.Concurrent;
 using System.Reflection.Emit;
+using System.Threading;
 
 using Dapper;
-
-#if NETSTANDARD1_3
-using DataException = System.InvalidOperationException;
-#else
-using System.Threading;
-#endif
 
 namespace Dapper.Contrib.Extensions
 {
@@ -66,7 +61,7 @@ namespace Dapper.Contrib.Extensions
 
         private static readonly ISqlAdapter DefaultAdapter = new SqlServerAdapter();
         private static readonly Dictionary<string, ISqlAdapter> AdapterDictionary
-            = new Dictionary<string, ISqlAdapter>
+            = new Dictionary<string, ISqlAdapter>(6)
             {
                 ["sqlconnection"] = new SqlServerAdapter(),
                 ["sqlceconnection"] = new SqlCeServerAdapter(),
@@ -185,14 +180,14 @@ namespace Dapper.Contrib.Extensions
                 GetQueries[type.TypeHandle] = sql;
             }
 
-            var dynParms = new DynamicParameters();
-            dynParms.Add("@id", id);
+            var dynParams = new DynamicParameters();
+            dynParams.Add("@id", id);
 
             T obj;
 
-            if (type.IsInterface())
+            if (type.IsInterface)
             {
-                var res = connection.Query(sql, dynParms).FirstOrDefault() as IDictionary<string, object>;
+                var res = connection.Query(sql, dynParams).FirstOrDefault() as IDictionary<string, object>;
 
                 if (res == null)
                     return null;
@@ -203,7 +198,7 @@ namespace Dapper.Contrib.Extensions
                 {
                     var val = res[property.Name];
                     if (val == null) continue;
-                    if (property.PropertyType.IsGenericType() && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
                         var genericType = Nullable.GetUnderlyingType(property.PropertyType);
                         if (genericType != null) property.SetValue(obj, Convert.ChangeType(val, genericType), null);
@@ -218,16 +213,16 @@ namespace Dapper.Contrib.Extensions
             }
             else
             {
-                obj = connection.Query<T>(sql, dynParms, transaction, commandTimeout: commandTimeout).FirstOrDefault();
+                obj = connection.Query<T>(sql, dynParams, transaction, commandTimeout: commandTimeout).FirstOrDefault();
             }
             return obj;
         }
 
         /// <summary>
-        /// Returns a list of entites from table "Ts".  
+        /// Returns a list of entities from table "Ts".
         /// Id of T must be marked with [Key] attribute.
         /// Entities created from interfaces are tracked/intercepted for changes and used by the Update() extension
-        /// for optimal performance. 
+        /// for optimal performance.
         /// </summary>
         /// <typeparam name="T">Interface or type to create and populate</typeparam>
         /// <param name="connection">Open SqlConnection</param>
@@ -248,7 +243,7 @@ namespace Dapper.Contrib.Extensions
                 GetQueries[cacheType.TypeHandle] = sql;
             }
 
-            if (!type.IsInterface()) return connection.Query<T>(sql, null, transaction, commandTimeout: commandTimeout);
+            if (!type.IsInterface) return connection.Query<T>(sql, null, transaction, commandTimeout: commandTimeout);
 
             var result = connection.Query(sql);
             var list = new List<T>();
@@ -259,7 +254,7 @@ namespace Dapper.Contrib.Extensions
                 {
                     var val = res[property.Name];
                     if (val == null) continue;
-                    if (property.PropertyType.IsGenericType() && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
+                    if (property.PropertyType.IsGenericType && property.PropertyType.GetGenericTypeDefinition() == typeof(Nullable<>))
                     {
                         var genericType = Nullable.GetUnderlyingType(property.PropertyType);
                         if (genericType != null) property.SetValue(obj, Convert.ChangeType(val, genericType), null);
@@ -290,15 +285,10 @@ namespace Dapper.Contrib.Extensions
             }
             else
             {
-#if NETSTANDARD1_3
-                var info = type.GetTypeInfo();
-#else
-                var info = type;
-#endif
                 //NOTE: This as dynamic trick falls back to handle both our own Table-attribute as well as the one in EntityFramework 
                 var tableAttrName =
-                    info.GetCustomAttribute<TableAttribute>(false)?.Name
-                    ?? (info.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.Name;
+                    type.GetCustomAttribute<TableAttribute>(false)?.Name
+                    ?? (type.GetCustomAttributes(false).FirstOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic)?.Name;
 
                 if (tableAttrName != null)
                 {
@@ -307,7 +297,7 @@ namespace Dapper.Contrib.Extensions
                 else
                 {
                     name = type.Name + "s";
-                    if (type.IsInterface() && name.StartsWith("I"))
+                    if (type.IsInterface && name.StartsWith("I"))
                         name = name.Substring(1);
                 }
             }
@@ -336,11 +326,11 @@ namespace Dapper.Contrib.Extensions
                 isList = true;
                 type = type.GetElementType();
             }
-            else if (type.IsGenericType())
+            else if (type.IsGenericType)
             {
                 var typeInfo = type.GetTypeInfo();
                 bool implementsGenericIEnumerableOrIsGenericIEnumerable =
-                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType() && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
+                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
                     typeInfo.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
                 if (implementsGenericIEnumerableOrIsGenericIEnumerable)
@@ -417,11 +407,11 @@ namespace Dapper.Contrib.Extensions
             {
                 type = type.GetElementType();
             }
-            else if (type.IsGenericType())
+            else if (type.IsGenericType)
             {
                 var typeInfo = type.GetTypeInfo();
                 bool implementsGenericIEnumerableOrIsGenericIEnumerable =
-                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType() && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
+                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
                     typeInfo.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
                 if (implementsGenericIEnumerableOrIsGenericIEnumerable)
@@ -486,11 +476,11 @@ namespace Dapper.Contrib.Extensions
             {
                 type = type.GetElementType();
             }
-            else if (type.IsGenericType())
+            else if (type.IsGenericType)
             {
                 var typeInfo = type.GetTypeInfo();
                 bool implementsGenericIEnumerableOrIsGenericIEnumerable =
-                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType() && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
+                    typeInfo.ImplementedInterfaces.Any(ti => ti.IsGenericType && ti.GetGenericTypeDefinition() == typeof(IEnumerable<>)) ||
                     typeInfo.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
                 if (implementsGenericIEnumerableOrIsGenericIEnumerable)
@@ -551,9 +541,9 @@ namespace Dapper.Contrib.Extensions
             var name = GetDatabaseType?.Invoke(connection).ToLower()
                        ?? connection.GetType().Name.ToLower();
 
-            return !AdapterDictionary.ContainsKey(name)
-                ? DefaultAdapter
-                : AdapterDictionary[name];
+            return AdapterDictionary.TryGetValue(name, out var adapter)
+                ? adapter
+                : DefaultAdapter;
         }
 
         private static class ProxyGenerator
@@ -562,7 +552,7 @@ namespace Dapper.Contrib.Extensions
 
             private static AssemblyBuilder GetAsmBuilder(string name)
             {
-#if NETSTANDARD1_3 || NETSTANDARD2_0
+#if NETSTANDARD2_0
                 return AssemblyBuilder.DefineDynamicAssembly(new AssemblyName { Name = name }, AssemblyBuilderAccess.Run);
 #else
                 return Thread.GetDomain().DefineDynamicAssembly(new AssemblyName { Name = name }, AssemblyBuilderAccess.Run);
@@ -597,7 +587,7 @@ namespace Dapper.Contrib.Extensions
                     CreateProperty<T>(typeBuilder, property.Name, property.PropertyType, setIsDirtyMethod, isId);
                 }
 
-#if NETSTANDARD1_3 || NETSTANDARD2_0
+#if NETSTANDARD2_0
                 var generatedType = typeBuilder.CreateTypeInfo().AsType();
 #else
                 var generatedType = typeBuilder.CreateType();
@@ -1017,7 +1007,7 @@ public partial class PostgresAdapter : ISqlAdapter
 
         var results = connection.Query(sb.ToString(), entityToInsert, transaction, commandTimeout: commandTimeout).ToList();
 
-        // Return the key by assinging the corresponding property in the object - by product is that it supports compound primary keys
+        // Return the key by assigning the corresponding property in the object - by product is that it supports compound primary keys
         var id = 0;
         foreach (var p in propertyInfos)
         {
@@ -1104,7 +1094,7 @@ public partial class SQLiteAdapter : ISqlAdapter
 }
 
 /// <summary>
-/// The Firebase SQL adapeter.
+/// The Firebase SQL adapter.
 /// </summary>
 public partial class FbAdapter : ISqlAdapter
 {

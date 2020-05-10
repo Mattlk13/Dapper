@@ -2,14 +2,9 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
-
 using Dapper.Contrib.Extensions;
 using Xunit;
 
-#if !NETCOREAPP1_0 && !NETCOREAPP2_0
-using System.Transactions;
-using System.Data.SqlServerCe;
-#endif
 using FactAttribute = Dapper.Tests.Contrib.SkippableFactAttribute;
 
 namespace Dapper.Tests.Contrib
@@ -108,9 +103,10 @@ namespace Dapper.Tests.Contrib
 
     public abstract partial class TestSuite
     {
-        protected static readonly bool IsAppVeyor = Environment.GetEnvironmentVariable("Appveyor")?.ToUpperInvariant() == "TRUE";
-
         public abstract IDbConnection GetConnection();
+
+        protected static string GetConnectionString(string name, string defaultConnectionString) =>
+            Environment.GetEnvironmentVariable(name) ?? defaultConnectionString;
 
         private IDbConnection GetOpenConnection()
         {
@@ -134,7 +130,7 @@ namespace Dapper.Tests.Contrib
 
                 Assert.Single(connection.GetAll<GenericType<string>>());
 
-                var objectsToInsert = new List<GenericType<string>>
+                var objectsToInsert = new List<GenericType<string>>(2)
                 {
                     new GenericType<string>
                     {
@@ -384,7 +380,7 @@ namespace Dapper.Tests.Contrib
         {
             const int numberOfEntities = 10;
 
-            var users = new List<User>();
+            var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
                 users.Add(new User { Name = "User " + i, Age = i });
 
@@ -422,7 +418,7 @@ namespace Dapper.Tests.Contrib
         {
             const int numberOfEntities = 10;
 
-            var users = new List<User>();
+            var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
                 users.Add(new User { Name = "User " + i, Age = i });
 
@@ -467,7 +463,7 @@ namespace Dapper.Tests.Contrib
         {
             const int numberOfEntities = 10;
 
-            var users = new List<User>();
+            var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
                 users.Add(new User { Name = "User " + i, Age = i });
 
@@ -525,7 +521,7 @@ namespace Dapper.Tests.Contrib
             }
         }
 
-#if !NETCOREAPP1_0 && !NETCOREAPP2_0
+#if SQLCE
         [Fact(Skip = "Not parallel friendly - thinking about how to test this")]
         public void InsertWithCustomDbType()
         {
@@ -563,7 +559,7 @@ namespace Dapper.Tests.Contrib
         {
             SqlMapperExtensions.TableNameMapper = type =>
             {
-                switch (type.Name())
+                switch (type.Name)
                 {
                     case "Person":
                         return "People";
@@ -573,7 +569,7 @@ namespace Dapper.Tests.Contrib
                             return tableattr.Name;
 
                         var name = type.Name + "s";
-                        if (type.IsInterface() && name.StartsWith("I"))
+                        if (type.IsInterface && name.StartsWith("I"))
                             return name.Substring(1);
                         return name;
                 }
@@ -592,7 +588,7 @@ namespace Dapper.Tests.Contrib
         {
             const int numberOfEntities = 10;
 
-            var users = new List<User>();
+            var users = new List<User>(numberOfEntities);
             for (var i = 0; i < numberOfEntities; i++)
                 users.Add(new User { Name = "User " + i, Age = i });
 
@@ -652,8 +648,7 @@ namespace Dapper.Tests.Contrib
                 Assert.Equal(car.Name, orgName);
             }
         }
-
-#if !NETCOREAPP1_0 && !NETCOREAPP2_0
+#if TRANSCOPE
         [Fact]
         public void TransactionScope()
         {
@@ -665,7 +660,7 @@ namespace Dapper.Tests.Contrib
 
                     txscope.Dispose();  //rollback
 
-                    Assert.IsNull(connection.Get<Car>(id));   //returns null - car with that id should not exist
+                    Assert.Null(connection.Get<Car>(id));   //returns null - car with that id should not exist
                 }
             }
         }
@@ -689,7 +684,7 @@ namespace Dapper.Tests.Contrib
             using (var connection = GetOpenConnection())
             {
                 var rand = new Random(8675309);
-                var data = new List<User>();
+                var data = new List<User>(100);
                 for (int i = 0; i < 100; i++)
                 {
                     var nU = new User { Age = rand.Next(70), Id = i, Name = Guid.NewGuid().ToString() };

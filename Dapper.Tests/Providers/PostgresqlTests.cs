@@ -9,9 +9,8 @@ namespace Dapper.Tests
     public class PostgresProvider : DatabaseProvider
     {
         public override DbProviderFactory Factory => Npgsql.NpgsqlFactory.Instance;
-        public override string GetConnectionString() => IsAppVeyor
-                ? "Server=localhost;Port=5432;User Id=postgres;Password=Password12!;Database=test"
-                : "Server=localhost;Port=5432;User Id=dappertest;Password=dapperpass;Database=dappertest"; // ;Encoding = UNICODE
+        public override string GetConnectionString() =>
+            GetConnectionString("PostgesConnectionString", "Server=localhost;Port=5432;User Id=dappertest;Password=dapperpass;Database=dappertest");
     }
     public class PostgresqlTests : TestBase<PostgresProvider>
     {
@@ -52,6 +51,28 @@ namespace Dapper.Tests
                 Assert.Equal(1, r.Count(c => c.Id == 1));
                 Assert.Equal(1, r.Count(c => c.Id == 3));
                 Assert.Equal(1, r.Count(c => c.Id == 5));
+                transaction.Rollback();
+            }
+        }
+
+        private class CharTable
+        {
+            public int Id { get; set; }
+            public char CharColumn { get; set; }
+        }
+
+        [FactPostgresql]
+        public void TestPostgresqlChar()
+        {
+            using (var conn = GetOpenNpgsqlConnection())
+            {
+                var transaction = conn.BeginTransaction();
+                conn.Execute("create table chartable (id serial not null, charcolumn \"char\" not null);");
+                conn.Execute("insert into chartable(charcolumn) values('a');");
+
+                var r = conn.Query<CharTable>("select * from chartable");
+                Assert.Single(r);
+                Assert.Equal('a', r.Single().CharColumn);
                 transaction.Rollback();
             }
         }

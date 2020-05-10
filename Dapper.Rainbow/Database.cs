@@ -176,6 +176,11 @@ namespace Dapper
         private DbTransaction _transaction;
 
         /// <summary>
+        /// Get underlying database connection.
+        /// </summary>
+        public DbConnection Connection => _connection;
+
+        /// <summary>
         /// Initializes the database.
         /// </summary>
         /// <param name="connection">The connection to use.</param>
@@ -194,7 +199,7 @@ namespace Dapper
         {
             _connection = connection;
             _commandTimeout = commandTimeout;
-            tableConstructor = tableConstructor ?? CreateTableConstructorForTable();
+            tableConstructor ??= CreateTableConstructorForTable();
 
             tableConstructor(this as TDatabase);
         }
@@ -252,7 +257,7 @@ namespace Dapper
             var il = dm.GetILGenerator();
 
             var setters = GetType().GetProperties()
-                .Where(p => p.PropertyType.IsGenericType() && tableTypes.Contains(p.PropertyType.GetGenericTypeDefinition()))
+                .Where(p => p.PropertyType.IsGenericType && tableTypes.Contains(p.PropertyType.GetGenericTypeDefinition()))
                 .Select(p => Tuple.Create(
                         p.GetSetMethod(true),
                         p.PropertyType.GetConstructor(new[] { typeof(TDatabase), typeof(string) }),
@@ -315,7 +320,7 @@ namespace Dapper
             name = name.Replace("[", "");
             name = name.Replace("]", "");
 
-            if (name.Contains("."))
+            if (name.IndexOf('.') > 0)
             {
                 var parts = name.Split('.');
                 if (parts.Length == 2)
@@ -464,7 +469,7 @@ namespace Dapper
         /// <summary>
         /// Disposes the current database, rolling back current transactions.
         /// </summary>
-        public void Dispose()
+        public virtual void Dispose()
         {
             if (_connection.State != ConnectionState.Closed)
             {

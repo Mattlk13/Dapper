@@ -7,10 +7,6 @@ using System.IO;
 using Xunit;
 using Xunit.Sdk;
 
-#if !NETCOREAPP1_0 && !NETCOREAPP2_0
-using System.Data.SqlServerCe;
-#endif
-
 namespace Dapper.Tests.Contrib
 {
     // The test suites here implement TestSuiteBase so that each provider runs
@@ -27,9 +23,8 @@ namespace Dapper.Tests.Contrib
     {
         private const string DbName = "tempdb";
         public static string ConnectionString =>
-            IsAppVeyor
-                ? @"Server=(local)\SQL2016;Database=tempdb;User ID=sa;Password=Password12!"
-                : $"Data Source=.;Initial Catalog={DbName};Integrated Security=True";
+            GetConnectionString("SqlServerConnectionString", $"Data Source=.;Initial Catalog={DbName};Integrated Security=True");
+
         public override IDbConnection GetConnection() => new SqlConnection(ConnectionString);
 
         static SqlServerTestSuite()
@@ -66,13 +61,11 @@ namespace Dapper.Tests.Contrib
     public class MySqlServerTestSuite : TestSuite
     {
         public static string ConnectionString { get; } =
-            IsAppVeyor
-                ? "Server=localhost;Database=test;Uid=root;Pwd=Password12!;UseAffectedRows=false;"
-                : "Server=localhost;Database=tests;Uid=test;Pwd=pass;UseAffectedRows=false;";
+            GetConnectionString("MySqlConnectionString", "Server=localhost;Database=tests;Uid=test;Pwd=pass;UseAffectedRows=false;");
 
         public override IDbConnection GetConnection()
         {
-            if (_skip) throw new SkipTestException("Skipping MySQL Tests - no server.");
+            if (_skip) Skip.Inconclusive("Skipping MySQL Tests - no server.");
             return new MySqlConnection(ConnectionString);
         }
 
@@ -148,7 +141,8 @@ namespace Dapper.Tests.Contrib
         }
     }
 
-#if !NETCOREAPP1_0 && !NETCOREAPP2_0
+
+#if SQLCE
     public class SqlCETestSuite : TestSuite
     {
         const string FileName = "Test.DB.sdf";
